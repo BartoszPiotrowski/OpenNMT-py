@@ -743,6 +743,11 @@ def translate_opts(parser):
               help="Using grayscale image can training "
                    "model faster and smaller")
 
+    # (Bartosz)
+    group.add('--file_to_save_enc_states', '-file_to_save_enc_states',
+              type=str, default=None,
+              help="Path to save the final states of encoder when translating")
+
 
 # Copyright 2016 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be

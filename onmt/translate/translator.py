@@ -29,6 +29,10 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
 
     scorer = onmt.translate.GNMTGlobalScorer.from_opt(opt)
 
+    if opt.file_to_save_enc_states:
+        with open(opt.file_to_save_enc_states, 'w') as f:
+            f.write('')
+
     translator = Translator.from_opt(
         model,
         fields,
@@ -130,7 +134,8 @@ class Translator(object):
             report_align=False,
             report_score=True,
             logger=None,
-            seed=-1):
+            seed=-1,
+            file_to_save_enc_states=None):
         self.model = model
         self.fields = fields
         tgt_field = dict(self.fields)["tgt"].base_field
@@ -140,6 +145,8 @@ class Translator(object):
         self._tgt_bos_idx = self._tgt_vocab.stoi[tgt_field.init_token]
         self._tgt_unk_idx = self._tgt_vocab.stoi[tgt_field.unk_token]
         self._tgt_vocab_len = len(self._tgt_vocab)
+
+        self.file_to_save_enc_states = file_to_save_enc_states
 
         self._gpu = gpu
         self._use_cuda = gpu > -1
@@ -259,7 +266,8 @@ class Translator(object):
             report_align=report_align,
             report_score=report_score,
             logger=logger,
-            seed=opt.seed)
+            seed=opt.seed,
+            file_to_save_enc_states=opt.file_to_save_enc_states)
 
     def _log(self, msg):
         if self.logger:
@@ -643,6 +651,26 @@ class Translator(object):
         # (1) Run the encoder on the src.
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
         self.model.decoder.init_state(src, memory_bank, enc_states)
+
+
+        # Bartosz:
+        if self.file_to_save_enc_states:
+            def append_line(line, filename):
+                with open(filename, encoding ='utf-8', mode='a') as f:
+                    f.write(line + '\n')
+            if isinstance(enc_states, tuple):  # LSTM
+                enc_states_to_save = torch.cat(enc_states, 2)
+            else:  # GRU
+                enc_states_to_save = enc_states
+            # layers x batch x dim --> batch x layers x dim
+            enc_states_to_save = enc_states_to_save.permute(1,0,2)
+            # batch x layers x dim --> batch * (layers*dim)
+            enc_states_to_save = enc_states_to_save.flatten(1)
+            batch_enc_states_to_save = torch.unbind(enc_states_to_save)
+            for b in batch_enc_states_to_save:
+                line = ' '.join([str(round(i, 9)) for i in  b.tolist()])
+                append_line(line, self.file_to_save_enc_states)
+
 
         results = {
             "predictions": None,
